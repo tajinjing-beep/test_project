@@ -13,7 +13,7 @@
   <header>
     <div>
       <h1>Citation Formatter</h1>
-      <p class="lead">URL(または DOI のリンク)を貼ると、引用の書式に整えます。複数の URL は改行区切りでまとめて入れられます。</p>
+      <p class="lead">URL(Webページ・DOI のリンク・arXiv・PDF)を貼ると、引用の書式に整えます。複数の URL は改行区切りでまとめて入れられます。</p>
     </div>
     <button id="theme" class="icon-btn" type="button" aria-label="表示テーマを切り替え" title="ライト / ダーク">◐</button>
   </header>
@@ -23,7 +23,7 @@
     <textarea id="urls" placeholder="https://example.com/article&#10;https://doi.org/10.xxxx/xxxxx" spellcheck="false" autocomplete="off"></textarea>
     <div id="input-bar" class="row between">
       <span class="examples">例: <span id="examples"></span></span>
-      <button id="go" class="primary">引用を作成</button>
+      <span class="row"><button id="manual" type="button" title="取得できないページ用に、空の項目を作って手で入力します">手入力で追加</button><button id="go" class="primary">引用を作成</button></span>
     </div>
   </form>
   <div id="msg" role="status" style="white-space:pre-wrap"></div>

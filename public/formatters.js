@@ -95,6 +95,28 @@ function chicago(c, acc) {
   return [who && endDot(who), `“${c.title.replace(/[.]$/, "")}.”`, c.siteName && endDot(it(c.siteName)), date && endDot(date), accessed, endDot(link)].filter(Boolean).join(" ");
 }
 
+// Chicago notes-bibliography, first-reference footnote form.
+function chicagoNote(c, acc) {
+  const au = c.authors || [];
+  const names = au.map(aFirstLast);
+  const who = au.length >= 4 ? names[0] + " et al." : joinList(names, "and", { oxford: true, twoComma: false });
+  const d = parseDate(c.date);
+  const date = d ? `${d.m ? MONTHS[d.m - 1] + " " : ""}${d.d ? d.d + ", " : ""}${d.y}` : "";
+  const link = c.doi ? `https://doi.org/${c.doi}` : c.url;
+  const a = parseDate(acc);
+  let out;
+  if (c.type === "article" && c.journal) {
+    const vi = [c.volume, c.issue && `no. ${c.issue}`].filter(Boolean).join(", ");
+    const head = [it(c.journal), vi].filter(Boolean).join(" ");
+    out = `${who ? who + ", " : ""}“${c.title},” ${head}${d ? ` (${d.y})` : ""}${c.pages ? `: ${c.pages}` : ""}, ${link}.`;
+  } else {
+    const accessed = !d && a ? `accessed ${MONTHS[a.m - 1]} ${a.d}, ${a.y}` : "";
+    const parts = [it(c.siteName), date, accessed, link].filter(Boolean);
+    out = `${who ? who + ", " : ""}“${c.title},” ${parts.join(", ")}.`;
+  }
+  return out;
+}
+
 function harvard(c, acc) {
   const au = c.authors || [];
   let who = "";
@@ -157,7 +179,7 @@ function bibtex(c, acc) {
   const a = parseDate(acc);
   const fields = c.type === "article" && c.journal
     ? [["author", names], ["title", c.title], ["journal", c.journal], ["year", d?.y], ["volume", c.volume], ["number", c.issue], ["pages", c.pages?.replace("-", "--")], ["doi", c.doi], ["url", c.url]]
-    : [["author", names], ["title", c.title], ["year", d?.y], ["month", d?.m ? MON_ABBR[d.m - 1].replace(".", "").toLowerCase().slice(0, 3) : ""], ["url", c.url], ["note", a ? `Accessed: ${a.y}-${String(a.m).padStart(2, "0")}-${String(a.d).padStart(2, "0")}` : ""], ["howpublished", c.siteName && `\\url{${c.url}}`]];
+    : [["author", names], ["title", c.title], ["year", d?.y], ["month", d?.m ? MON_ABBR[d.m - 1].replace(".", "").toLowerCase().slice(0, 3) : ""], ["url", c.url], ["note", a ? `Accessed: ${a.y}-${String(a.m).padStart(2, "0")}-${String(a.d).padStart(2, "0")}` : ""], ["howpublished", c.siteName && `\\url{${c.url}}`], ["eprint", c.arxiv], ["archiveprefix", c.arxiv && "arXiv"]];
   const body = fields.filter(([, v]) => v).map(([k, v]) => `  ${k} = {${String(v).replace(/([&%$#_])/g, "\\$1")}}`).join(",\n");
   return `@${c.type === "article" && c.journal ? "article" : "misc"}{${key},\n${body}\n}`;
 }
@@ -165,7 +187,8 @@ function bibtex(c, acc) {
 export const STYLES = {
   apa: { label: "APA 7th", fn: (c) => apa(c) },
   mla: { label: "MLA 9th", fn: mla },
-  chicago: { label: "Chicago (notes-bibliography)", fn: chicago },
+  chicago: { label: "Chicago(文献表)", fn: chicago },
+  note: { label: "Chicago(脚注)", fn: chicagoNote },
   harvard: { label: "Harvard", fn: harvard },
   ieee: { label: "IEEE", fn: ieee },
   ja: { label: "日本語", fn: ja },

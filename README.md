@@ -15,3 +15,9 @@ npm run deploy   # Cloudflare にデプロイ (要 wrangler login)
 ```
 
 自動抽出は完璧ではないため、画面上でメタデータを修正すると書式に即反映される。提出前に必ず目視確認すること。
+
+## 対応する入力
+Web ページ(`citation_*` / Dublin Core / OpenGraph / JSON-LD)、DOI のリンク(Crossref)、arXiv(`abs` / `pdf`)、PDF(埋め込み情報があれば)。ボット対策で取得できないサイトは「手入力で追加」。
+
+## 公開時の設定
+`wrangler.jsonc` の `ratelimits` で、キャッシュに無い問い合わせを IP ごとに 60 秒あたり 30 回までに制限している(不要なら削除)。

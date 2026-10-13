@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cleanTitle, parseName, splitAuthors } from "../src/index.js";
+import { cleanTitle, parseName, splitAuthors } from "../public/names.js";
 
 test("cleanTitle strips site suffix/prefix only when it matches the site", () => {
   assert.equal(cleanTitle("Citation - Wikipedia", "Wikipedia"), "Citation");
@@ -21,4 +21,8 @@ test("splitAuthors", () => {
 
 test("cleanTitle accepts any known site name", () => {
   assert.equal(cleanTitle("Citation - Wikipedia", "Wikimedia Foundation, Inc.", "wikipedia"), "Citation");
+});
+
+test("Latin first-last without comma, as typed in the editor", () => {
+  assert.deepEqual(parseName("Jane Doe"), { family: "Doe", given: "Jane" });
 });

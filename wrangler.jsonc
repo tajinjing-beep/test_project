@@ -3,6 +3,10 @@
   "name": "citation-formatter",
   "main": "src/index.js",
   "compatibility_date": "2025-01-01",
+  // Per-IP limit on uncached lookups (30 per 60 s). Remove this block to disable.
+  "ratelimits": [
+    { "name": "RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS"

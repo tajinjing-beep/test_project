@@ -1,8 +1,11 @@
+import { parseName } from "./names.js";
 import { STYLES, format, toHtml, toPlain, sortKey } from "./formatters.js";
 
 const $ = (id) => document.getElementById(id);
 const STORE = "citefmt.v1";
-const EXAMPLES = ["https://doi.org/10.1038/nature14539", "https://en.wikipedia.org/wiki/Citation"];
+// Styles whose list is numbered in order of first citation (the rest are alphabetical).
+const NUMBERED = { ieee: (n) => `[${n}] `, note: (n) => `${n}. ` };
+const EXAMPLES = ["https://doi.org/10.1038/nature14539", "https://arxiv.org/abs/1706.03762", "https://ja.wikipedia.org/wiki/引用"];
 
 const state = { items: [], style: "apa", theme: "" };
 try { Object.assign(state, JSON.parse(localStorage.getItem(STORE) || "{}")); } catch { /* storage unavailable */ }
@@ -10,10 +13,7 @@ const save = () => { try { localStorage.setItem(STORE, JSON.stringify(state)); }
 
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const authorsToText = (as) => as.map((a) => (a.name ? a.name : `${a.family}, ${a.given}`)).join("; ");
-const textToAuthors = (t) => t.split(";").map((s) => s.trim()).filter(Boolean).map((s) => {
-  if (s.includes(",")) { const [family, given] = s.split(/,\s*(.*)/s); return { family: family.trim(), given: (given || "").trim() }; }
-  return { name: s };
-});
+const textToAuthors = (t) => t.split(";").map((s) => s.trim()).filter(Boolean).map(parseName);
 const cite = (it, style = state.style) => format(style, it.meta, it.accessed);
 
 // ---- theme ----
@@ -24,7 +24,7 @@ function applyTheme() {
 // ---- rendering ----
 function orderedItems() {
   // IEEE is numbered in order of first citation; the other styles are alphabetical.
-  if (state.style === "ieee") return state.items;
+  if (NUMBERED[state.style]) return state.items;
   return [...state.items].sort((a, b) => sortKey(a.meta).localeCompare(sortKey(b.meta), "ja"));
 }
 
@@ -39,7 +39,7 @@ function missingWarning(m) {
 function paint(el, it, n) {
   const text = cite(it);
   const isBib = state.style === "bibtex";
-  const prefix = state.style === "ieee" ? `[${n}] ` : "";
+  const prefix = NUMBERED[state.style]?.(n) || "";
   const body = el.querySelector(".cite");
   if (isBib) body.textContent = toPlain(text); else body.innerHTML = prefix + toHtml(text);
 }
@@ -90,9 +90,11 @@ function buildItem(it, n) {
     <div class="edit" hidden></div>`;
   if (warn) el.querySelector(".warn").textContent = warn;
   el.querySelector(".src").textContent = it.meta.url;
+  if (it.meta.pdf && !it.meta.authors.length) el.querySelector(".warn")?.append(" (PDF は埋め込み情報が少ないことがあります)");
   paint(el, it, n);
 
   const edit = el.querySelector(".edit");
+  if (it.open) { edit.hidden = false; el.querySelector('[data-a="edit"]').setAttribute("aria-expanded", "true"); }
   for (const [k, label, hint] of FIELDS) {
     const id = `f-${it.id}-${k}`;
     const lab = document.createElement("label"); lab.htmlFor = id; lab.textContent = label;
@@ -106,12 +108,12 @@ function buildItem(it, n) {
     const a = e.target.closest("button")?.dataset.a;
     if (!a) return;
     if (a === "del") { state.items = state.items.filter((x) => x.id !== it.id); save(); render(); }
-    if (a === "edit") { edit.hidden = !edit.hidden; e.target.setAttribute("aria-expanded", String(!edit.hidden)); }
+    if (a === "edit") { edit.hidden = !edit.hidden; it.open = !edit.hidden; e.target.setAttribute("aria-expanded", String(!edit.hidden)); }
     if (a === "copy") flash(e.target, await copy(state.style === "bibtex" ? "" : toHtml(prefixed(it, n)), toPlain(prefixed(it, n))));
   });
   return el;
 }
-const prefixed = (it, n) => (state.style === "ieee" ? `[${n}] ` : "") + cite(it);
+const prefixed = (it, n) => (NUMBERED[state.style]?.(n) || "") + cite(it);
 
 // ---- clipboard / download ----
 async function copy(html, plain) {
@@ -180,6 +182,13 @@ $("f").addEventListener("submit", async (e) => {
   try { if (await addUrls(urls)) $("urls").value = ""; } finally { $("go").disabled = false; }
 });
 $("urls").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("f").requestSubmit(); });
+
+$("manual").addEventListener("click", () => {
+  const meta = { type: "webpage", title: "", authors: [], date: "", siteName: "", journal: "", publisher: "", volume: "", issue: "", pages: "", doi: "", url: $("urls").value.trim().split(/\s+/)[0] || "" };
+  const it = { id: crypto.randomUUID(), meta, accessed: today(), open: true };
+  state.items.push(it); save(); render();
+  document.getElementById(`f-${it.id}-title`)?.focus();
+});
 
 $("examples").append(...EXAMPLES.map((u) => {
   const b = document.createElement("button"); b.type = "button"; b.textContent = u.replace(/^https:\/\//, "");

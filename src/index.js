@@ -1,3 +1,5 @@
+import { cleanTitle, parseName, splitAuthors } from "../public/names.js";
+
 // Cloudflare Worker: /api/cite?url=... fetches a page and extracts citation metadata.
 // Everything else is served from ./public via the ASSETS binding.
 
@@ -13,6 +15,12 @@ export default {
       const cache = caches.default;
       const hit = await cache.match(request);
       if (hit) return hit;
+      // Only cache misses cost upstream fetches, so only they are rate limited.
+      if (env.RATE_LIMITER) {
+        const key = request.headers.get("cf-connecting-ip") || "anon";
+        const { success } = await env.RATE_LIMITER.limit({ key });
+        if (!success) return json({ error: "リクエストが多すぎます。しばらくしてからもう一度お試しください" }, 429);
+      }
       const res = await handleCite(searchParams.get("url"));
       if (res.ok) ctx.waitUntil(cache.put(request, res.clone()));
       return res;
@@ -50,6 +58,10 @@ async function handleCite(raw) {
   const target = parseTarget(raw);
   if (!target) return json({ error: "有効な http(s) URL を指定してください" }, 400);
 
+  // arxiv.org/pdf/ID(.pdf) → the abstract page, which carries the metadata.
+  const ax = /^https?:\/\/(?:www\.)?arxiv\.org\/pdf\/([^?#]+?)(?:v\d+)?(?:\.pdf)?$/i.exec(target.href);
+  if (ax) target.href = `https://arxiv.org/abs/${ax[1]}`;
+
   // DOI URLs: Crossref gives much better metadata than scraping the publisher page.
   const doi = extractDoi(target.href);
   if (doi) {
@@ -72,7 +84,8 @@ async function handleCite(raw) {
   }
   const type = res.headers.get("content-type") || "";
   if (!res.ok) return json({ error: `ページの取得に失敗しました (HTTP ${res.status})` }, 502);
-  if (!/html|xml/i.test(type)) return json({ error: "HTML 以外のページには未対応です" }, 415);
+  if (/pdf/i.test(type) || /\.pdf($|[?#])/i.test(target.pathname)) return json(await extractPdf(res, target));
+  if (!/html|xml/i.test(type)) return json({ error: "HTML と PDF 以外には未対応です" }, 415);
 
   const meta = await extractMetadata(res, target);
   if (meta.doi && !meta.journal) {
@@ -162,15 +175,18 @@ async function extractMetadata(res, target) {
     "article:published_time", "og:article:published_time", "datepublished", "date", "pubdate",
   ) || ldObj.date;
 
+  const arxiv = one("citation_arxiv_id") || (/arxiv\.org$/.test(target.hostname) ? (/\/abs\/(.+)$/.exec(target.pathname) || [])[1] || "" : "");
+
   return {
     type: one("citation_journal_title") ? "article" : "webpage",
+    arxiv,
     title: cleanTitle(
       one("citation_title", "dc.title", "og:title", "twitter:title") || ldObj.title || title,
       one("og:site_name", "application-name"), ldObj.site, target.hostname.replace(/^www\./, "").split(".").slice(-2, -1)[0],
     ),
     authors: authorsRaw.flatMap(splitAuthors).map(parseName),
     date: normalizeDate(date),
-    siteName: one("og:site_name", "application-name") || ldObj.site || target.hostname.replace(/^www\./, ""),
+    siteName: arxiv ? "arXiv" : one("og:site_name", "application-name") || ldObj.site || target.hostname.replace(/^www\./, ""),
     journal: one("citation_journal_title", "prism.publicationname"),
     publisher: one("citation_publisher", "dc.publisher"),
     volume: one("citation_volume", "prism.volume"),
@@ -180,6 +196,54 @@ async function extractMetadata(res, target) {
     url: canonical && /^https?:/i.test(canonical) ? canonical : res.url || target.href,
     lang,
   };
+}
+
+
+// Best-effort PDF metadata: reads the Info dictionary / XMP if they are stored uncompressed.
+async function extractPdf(res, target) {
+  const buf = new Uint8Array(await new Response(capStream(res.body, 4_000_000)).arrayBuffer());
+  const text = new TextDecoder("latin1").decode(buf);
+  const info = (key) => {
+    const m = new RegExp(`/${key}\\s*(\\((?:\\\\.|[^\\\\)])*\\)|<[0-9A-Fa-f\\s]+>)`).exec(text);
+    return m ? decodePdfString(m[1]) : "";
+  };
+  const xmp = (tag) => {
+    const m = new RegExp(`<${tag}[^>]*>[\\s\\S]*?<rdf:li[^>]*>([^<]+)<`).exec(text);
+    return m ? m[1].trim() : "";
+  };
+  const title = info("Title") || xmp("dc:title");
+  const author = info("Author") || xmp("dc:creator");
+  const cd = /\/CreationDate\s*\(D:(\d{4})(\d{2})?(\d{2})?/.exec(text);
+  const fileName = decodeURIComponent(target.pathname.split("/").pop() || "").replace(/\.pdf$/i, "");
+  return {
+    type: "webpage",
+    pdf: true,
+    title: cleanTitle(title, target.hostname) || fileName || target.hostname,
+    authors: author ? splitAuthors(author).map(parseName) : [],
+    date: cd ? normalizeDate([cd[1], cd[2], cd[3]].filter(Boolean).join("-")) : "",
+    siteName: target.hostname.replace(/^www\./, ""),
+    journal: "", publisher: "", volume: "", issue: "", pages: "", doi: "",
+    url: res.url || target.href,
+    lang: "",
+  };
+}
+
+function decodePdfString(raw) {
+  let bytes;
+  if (raw.startsWith("<")) {
+    const hex = raw.slice(1, -1).replace(/\s+/g, "");
+    bytes = Uint8Array.from(hex.match(/../g) || [], (h) => parseInt(h, 16));
+  } else {
+    const body = raw.slice(1, -1).replace(/\\([nrtbf()\\]|[0-7]{1,3}|\r?\n)/g, (_, c) => {
+      if (/^[0-7]/.test(c)) return String.fromCharCode(parseInt(c, 8));
+      return { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f" }[c] ?? (/^\r?\n$/.test(c) ? "" : c);
+    });
+    bytes = Uint8Array.from(body, (ch) => ch.charCodeAt(0) & 0xff);
+  }
+  const bom = bytes[0] === 0xfe && bytes[1] === 0xff;
+  const out = (bom ? new TextDecoder("utf-16be").decode(bytes.slice(2)) : new TextDecoder("latin1").decode(bytes)).replace(/\0/g, "").trim();
+  // Encrypted PDFs yield garbage; drop anything containing control characters.
+  return /[\u0001-\u0008\u000e-\u001f\u007f-\u009f\ufffd]/.test(out) ? "" : out;
 }
 
 function capStream(body, max) {
@@ -209,41 +273,6 @@ function parseLd(blocks) {
   out.authors = [].concat(article.author || []).map((a) => (typeof a === "string" ? a : a?.name)).filter(Boolean);
   out.site = article.publisher?.name || "";
   return out;
-}
-
-export function splitAuthors(s) {
-  // "A, B and C" style bylines; "Last, First" is handled in parseName so only split on ; / & / and.
-  return s.split(/\s*(?:;|&|、| and )\s*/i).map((x) => x.trim()).filter(Boolean);
-}
-
-// "Page title | Site Name" → "Page title" (only when the suffix really is the site name).
-export function cleanTitle(t, ...sites) {
-  t = (t || "").replace(/\s+/g, " ").trim();
-  const names = sites.filter(Boolean).map((x) => x.toLowerCase());
-  const m = /^(.*\S)\s+[|\-–—:・]\s+(.+)$/.exec(t);
-  if (m && names.includes(m[2].toLowerCase())) return m[1];
-  const m2 = /^(.+?)\s*[|\-–—:・]\s+(.*\S)$/.exec(t);
-  if (m2 && names.includes(m2[1].toLowerCase())) return m2[2];
-  return t;
-}
-
-const CJK = /[\u3040-\u30ff\u3400-\u9fff]/;
-
-export function parseName(s) {
-  s = s.replace(/^by\s+/i, "").replace(/^著者[:：]\s*/, "").trim();
-  if (CJK.test(s)) {
-    // "山田 太郎" / "山田　太郎" / "山田・太郎" → family + given; a single token is kept whole.
-    const parts = s.split(/[\s\u3000・]+/).filter(Boolean);
-    return parts.length === 2 ? { family: parts[0], given: parts[1] } : { name: s };
-  }
-  if (s.includes(",")) {
-    const [family, given] = s.split(/,\s*(.*)/s);
-    return { family: family.trim(), given: (given || "").trim() };
-  }
-  const parts = s.split(/\s+/);
-  // Single token or obvious organization → keep as institutional name.
-  if (parts.length === 1 || parts.length > 4 || /\b(inc|ltd|llc|corp|university|institute|association|agency|ministry|news|times|group|contributors|team|staff|editors|editorial|foundation|project|projects|society|council|committee|department|press)\b/i.test(s)) return { name: s };
-  return { family: parts.at(-1), given: parts.slice(0, -1).join(" ") };
 }
 
 function normalizeDate(s) {

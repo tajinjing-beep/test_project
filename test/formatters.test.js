@@ -43,3 +43,12 @@ test("Japanese style and CJK names", () => {
   assert.equal(toPlain(format("ja", c, "2025-01-02")), "山田太郎 (2023) 「引用の書き方」『例ブログ』https://example.jp/a (閲覧日: 2025年1月2日)");
   assert.equal(toPlain(format("apa", c)), "山田太郎. (2023, April 1). 引用の書き方. 例ブログ. https://example.jp/a".replace("引用の書き方.", "引用の書き方."));
 });
+
+test("Chicago footnote", () => {
+  assert.equal(toPlain(format("note", web, "2025-01-02")), "John Albert Smith and Jane Doe, “How to cite a website,” Example Blog, March 5, 2024, https://example.com/post.");
+  assert.equal(toPlain(format("note", art)), "Anna Lee, “A study of things,” Journal of Stuff 12, no. 3 (2021): 45-67, https://doi.org/10.1000/xyz123.");
+});
+test("BibTeX arXiv eprint", () => {
+  const c = { type: "webpage", title: "T", siteName: "arXiv", arxiv: "1706.03762", authors: [{ family: "A", given: "B" }], date: "2017-06-12", url: "https://arxiv.org/abs/1706.03762" };
+  assert.match(format("bibtex", c, "2025-01-02"), /eprint = \{1706\.03762\}[\s\S]*archiveprefix = \{arXiv\}/);
+});
