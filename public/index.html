@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Citation Formatter</title>
+<meta name="description" content="URL から APA・MLA・Chicago・Harvard・IEEE・BibTeX・日本語書式の引用を作るツール">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%232457d6%27/%3E%3Ctext x=%2716%27 y=%2723%27 font-size=%2720%27 text-anchor=%27middle%27 fill=%27white%27 font-family=%27Georgia%27%3E%E2%80%9C%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Citation Formatter</h1>
+      <p class="lead">URL(Webページ・DOI のリンク・arXiv・PDF)を貼ると、引用の書式に整えます。複数の URL は改行区切りでまとめて入れられます。</p>
+    </div>
+    <button id="theme" class="icon-btn" type="button" aria-label="表示テーマを切り替え" title="ライト / ダーク">◐</button>
+  </header>
+
+  <form id="f">
+    <label for="urls" class="lead" style="display:block;margin-bottom:6px">URL</label>
+    <textarea id="urls" placeholder="https://example.com/article&#10;https://doi.org/10.xxxx/xxxxx" spellcheck="false" autocomplete="off"></textarea>
+    <div id="input-bar" class="row between">
+      <span class="examples">例: <span id="examples"></span></span>
+      <span class="row"><button id="manual" type="button" title="取得できないページ用に、空の項目を作って手で入力します">手入力で追加</button><button id="go" class="primary">引用を作成</button></span>
+    </div>
+  </form>
+  <div id="msg" role="status" style="white-space:pre-wrap"></div>
+
+  <div id="toolbar" class="toolbar" hidden>
+    <div class="row between">
+      <div id="styles" class="seg" role="group" aria-label="引用の書式"></div>
+      <div class="row">
+        <button id="copy-all" class="small" type="button">リストをコピー</button>
+        <button id="dl-txt" class="small" type="button">.txt</button>
+        <button id="dl-bib" class="small" type="button">.bib</button>
+        <button id="clear" class="small danger" type="button">全削除</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="empty">まだ引用がありません。上の欄に URL を入れてください。</div>
+  <section id="list" aria-live="polite"></section>
+
+  <footer>メタデータはページから自動抽出しています。提出前に必ず内容を確認してください。リストはこのブラウザにだけ保存されます。</footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
