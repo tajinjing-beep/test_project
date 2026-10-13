@@ -26,3 +26,17 @@ test("cleanTitle accepts any known site name", () => {
 test("Latin first-last without comma, as typed in the editor", () => {
   assert.deepEqual(parseName("Jane Doe"), { family: "Doe", given: "Jane" });
 });
+
+test("normalizeDate handles Japanese and ISO forms", async () => {
+  const { normalizeDate } = await import("../public/names.js");
+  assert.equal(normalizeDate("2024年1月5日"), "2024-01-05");
+  assert.equal(normalizeDate("2024年3月"), "2024-03");
+  assert.equal(normalizeDate("2024/3/5"), "2024-03-05");
+  assert.equal(normalizeDate("2024-03-05T10:00:00+09:00"), "2024-03-05");
+  assert.equal(normalizeDate("garbage"), "");
+});
+
+test("decodeEntities", async () => {
+  const { decodeEntities } = await import("../public/names.js");
+  assert.equal(decodeEntities("HTML &lt;time&gt; &amp; &#x3042;&#12354; &unknown;"), "HTML <time> & ああ &unknown;");
+});
