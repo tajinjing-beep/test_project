@@ -37,3 +37,9 @@ test("Chicago web page", () => {
 test("BibTeX", () => {
   assert.match(format("bibtex", art), /^@article\{Lee2021,[\s\S]*pages = \{45--67\}/);
 });
+
+test("Japanese style and CJK names", () => {
+  const c = { type: "webpage", title: "引用の書き方", siteName: "例ブログ", authors: [{ family: "山田", given: "太郎" }], date: "2023-04-01", url: "https://example.jp/a" };
+  assert.equal(toPlain(format("ja", c, "2025-01-02")), "山田太郎 (2023) 「引用の書き方」『例ブログ』https://example.jp/a (閲覧日: 2025年1月2日)");
+  assert.equal(toPlain(format("apa", c)), "山田太郎. (2023, April 1). 引用の書き方. 例ブログ. https://example.jp/a".replace("引用の書き方.", "引用の書き方."));
+});

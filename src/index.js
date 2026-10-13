@@ -5,10 +5,17 @@ const MAX_BYTES = 1_500_000;
 const FETCH_TIMEOUT_MS = 8000;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const { pathname, searchParams } = new URL(request.url);
     if (pathname === "/api/cite") {
-      return handleCite(searchParams.get("url"));
+      // Only our own pages should use this endpoint (blocks casual cross-site abuse).
+      if (request.headers.get("sec-fetch-site") === "cross-site") return json({ error: "forbidden" }, 403);
+      const cache = caches.default;
+      const hit = await cache.match(request);
+      if (hit) return hit;
+      const res = await handleCite(searchParams.get("url"));
+      if (res.ok) ctx.waitUntil(cache.put(request, res.clone()));
+      return res;
     }
     return env.ASSETS.fetch(request);
   },
@@ -17,7 +24,10 @@ export default {
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=3600" },
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": status === 200 ? "public, max-age=3600" : "no-store",
+    },
   });
 }
 
@@ -154,7 +164,10 @@ async function extractMetadata(res, target) {
 
   return {
     type: one("citation_journal_title") ? "article" : "webpage",
-    title: one("citation_title", "dc.title", "og:title", "twitter:title") || ldObj.title || title,
+    title: cleanTitle(
+      one("citation_title", "dc.title", "og:title", "twitter:title") || ldObj.title || title,
+      one("og:site_name", "application-name"), ldObj.site, target.hostname.replace(/^www\./, "").split(".").slice(-2, -1)[0],
+    ),
     authors: authorsRaw.flatMap(splitAuthors).map(parseName),
     date: normalizeDate(date),
     siteName: one("og:site_name", "application-name") || ldObj.site || target.hostname.replace(/^www\./, ""),
@@ -198,13 +211,31 @@ function parseLd(blocks) {
   return out;
 }
 
-function splitAuthors(s) {
+export function splitAuthors(s) {
   // "A, B and C" style bylines; "Last, First" is handled in parseName so only split on ; / & / and.
-  return s.split(/\s*(?:;|&| and )\s*/i).map((x) => x.trim()).filter(Boolean);
+  return s.split(/\s*(?:;|&|、| and )\s*/i).map((x) => x.trim()).filter(Boolean);
 }
 
-function parseName(s) {
-  s = s.replace(/^by\s+/i, "").trim();
+// "Page title | Site Name" → "Page title" (only when the suffix really is the site name).
+export function cleanTitle(t, ...sites) {
+  t = (t || "").replace(/\s+/g, " ").trim();
+  const names = sites.filter(Boolean).map((x) => x.toLowerCase());
+  const m = /^(.*\S)\s+[|\-–—:・]\s+(.+)$/.exec(t);
+  if (m && names.includes(m[2].toLowerCase())) return m[1];
+  const m2 = /^(.+?)\s*[|\-–—:・]\s+(.*\S)$/.exec(t);
+  if (m2 && names.includes(m2[1].toLowerCase())) return m2[2];
+  return t;
+}
+
+const CJK = /[\u3040-\u30ff\u3400-\u9fff]/;
+
+export function parseName(s) {
+  s = s.replace(/^by\s+/i, "").replace(/^著者[:：]\s*/, "").trim();
+  if (CJK.test(s)) {
+    // "山田 太郎" / "山田　太郎" / "山田・太郎" → family + given; a single token is kept whole.
+    const parts = s.split(/[\s\u3000・]+/).filter(Boolean);
+    return parts.length === 2 ? { family: parts[0], given: parts[1] } : { name: s };
+  }
   if (s.includes(",")) {
     const [family, given] = s.split(/,\s*(.*)/s);
     return { family: family.trim(), given: (given || "").trim() };

@@ -27,10 +27,13 @@ function joinList(items, word, { oxford = false, twoComma = false } = {}) {
 }
 
 // ---- Author renderers ----
-const aLastInit = (a) => (a.name ? a.name : `${a.family}, ${initials(a.given)}`.replace(/,\s*$/, ""));
-const aLastFirst = (a) => (a.name ? a.name : `${a.family}, ${a.given}`.replace(/,\s*$/, ""));
-const aFirstLast = (a) => (a.name ? a.name : `${a.given} ${a.family}`.trim());
-const aInitLast = (a) => (a.name ? a.name : `${initials(a.given)} ${a.family}`.trim());
+// CJK names are written family+given with no separator in every style.
+const isCjk = (s) => /[\u3040-\u30ff\u3400-\u9fff]/.test(s || "");
+const cjkName = (a) => a.family + a.given;
+const aLastInit = (a) => (a.name ? a.name : isCjk(a.family) ? cjkName(a) : `${a.family}, ${initials(a.given)}`.replace(/,\s*$/, ""));
+const aLastFirst = (a) => (a.name ? a.name : isCjk(a.family) ? cjkName(a) : `${a.family}, ${a.given}`.replace(/,\s*$/, ""));
+const aFirstLast = (a) => (a.name ? a.name : isCjk(a.family) ? cjkName(a) : `${a.given} ${a.family}`.trim());
+const aInitLast = (a) => (a.name ? a.name : isCjk(a.family) ? cjkName(a) : `${initials(a.given)} ${a.family}`.trim());
 
 function apa(c) {
   const au = c.authors || [];
@@ -126,6 +129,25 @@ function ieee(c, acc) {
   return `${who ? who + ", " : ""}“${c.title},” ${[it(c.siteName), when].filter(Boolean).join(", ")}${c.siteName || when ? ". " : ""}[Online]. Available: ${c.url}${accessed || "."}`;
 }
 
+
+// 日本語の一般的な書式(各学会の細則は異なるため、最大公約数的な形)
+function ja(c, acc) {
+  const au = c.authors || [];
+  const nm = (a) => a.name || (isCjk(a.family) ? cjkName(a) : `${a.given} ${a.family}`.trim());
+  const who = au.length > 3 ? nm(au[0]) + "他" : au.map(nm).join("・");
+  const d = parseDate(c.date);
+  const year = d ? `${d.y}` : "年不明";
+  const a = parseDate(acc);
+  const accessed = a ? `(閲覧日: ${a.y}年${a.m}月${a.d}日)` : "";
+  const link = c.doi ? `https://doi.org/${c.doi}` : c.url;
+  if (c.type === "article" && c.journal) {
+    const vi = c.volume ? `${c.volume}${c.issue ? `(${c.issue})` : ""}` : "";
+    const pg = c.pages ? `, pp.${c.pages}` : "";
+    return `${who ? who + " " : ""}(${year}) 「${c.title}」『${c.journal}』${vi}${pg}. ${link}`;
+  }
+  return `${who ? who + " " : ""}(${year}) 「${c.title}」${c.siteName ? `『${c.siteName}』` : ""}${link} ${accessed}`.trim();
+}
+
 function bibtex(c, acc) {
   const au = c.authors || [];
   const d = parseDate(c.date);
@@ -146,6 +168,7 @@ export const STYLES = {
   chicago: { label: "Chicago (notes-bibliography)", fn: chicago },
   harvard: { label: "Harvard", fn: harvard },
   ieee: { label: "IEEE", fn: ieee },
+  ja: { label: "日本語", fn: ja },
   bibtex: { label: "BibTeX", fn: bibtex },
 };
 
@@ -155,4 +178,10 @@ export const toHtml = (s) => esc(s).replaceAll(I_OPEN, "<i>").replaceAll(I_CLOSE
 
 export function format(style, c, accessedISO) {
   return STYLES[style].fn(c, accessedISO);
+}
+
+// Alphabetical key for reference lists: first author's family name, else title.
+export function sortKey(c) {
+  const a = c.authors?.[0];
+  return (a ? a.family || a.name : c.title || "").toLowerCase();
 }

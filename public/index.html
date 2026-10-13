@@ -4,146 +4,47 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Citation Formatter</title>
-<style>
-  :root { --bg:#f7f7f5; --fg:#1f2328; --muted:#656d76; --card:#fff; --line:#d8dce0; --accent:#0b6bcb; --err:#b42318; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#14161a; --fg:#e6e8ea; --muted:#9aa4af; --card:#1c1f24; --line:#2e333a; --accent:#5aa9ff; --err:#ff8a80; } }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
-  h1 { font-size: 1.5rem; margin: 0 0 4px; }
-  p.lead { color: var(--muted); margin: 0 0 24px; }
-  form { display:flex; gap:8px; }
-  input[type=text], input[type=url], select, textarea { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
-  #url { flex:1; min-width:0; }
-  button { font:inherit; cursor:pointer; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:8px; padding:10px 18px; }
-  button.ghost { background:transparent; color:var(--accent); padding:6px 12px; font-size:.875rem; }
-  button:disabled { opacity:.6; cursor:wait; }
-  #msg { min-height:1.5em; margin:12px 0; color:var(--muted); }
-  #msg.err { color:var(--err); }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:16px; }
-  .card h2 { font-size:.8rem; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin:0 0 8px; display:flex; justify-content:space-between; align-items:center; }
-  .out { white-space:pre-wrap; word-break:break-word; margin:0; padding-left:2em; text-indent:-2em; }
-  pre.out { padding-left:0; text-indent:0; font:.85rem/1.5 ui-monospace,monospace; }
-  details { margin-top:20px; }
-  summary { cursor:pointer; color:var(--muted); }
-  .grid { display:grid; grid-template-columns: 7em 1fr; gap:8px; margin-top:12px; align-items:center; }
-  .grid label { color:var(--muted); font-size:.875rem; }
-  .grid input, .grid select { width:100%; }
-  @media (max-width:520px) { form { flex-direction:column; } .grid { grid-template-columns:1fr; gap:2px; } }
-</style>
+<meta name="description" content="URL から APA・MLA・Chicago・Harvard・IEEE・BibTeX・日本語書式の引用を作るツール">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%232457d6%27/%3E%3Ctext x=%2716%27 y=%2723%27 font-size=%2720%27 text-anchor=%27middle%27 fill=%27white%27 font-family=%27Georgia%27%3E%E2%80%9C%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
-  <h1>Citation Formatter</h1>
-  <p class="lead">URL を入れると、APA・MLA・Chicago・Harvard・IEEE・BibTeX の書式で引用を作ります。</p>
+  <header>
+    <div>
+      <h1>Citation Formatter</h1>
+      <p class="lead">URL(または DOI のリンク)を貼ると、引用の書式に整えます。複数の URL は改行区切りでまとめて入れられます。</p>
+    </div>
+    <button id="theme" class="icon-btn" type="button" aria-label="表示テーマを切り替え" title="ライト / ダーク">◐</button>
+  </header>
 
   <form id="f">
-    <input id="url" type="text" inputmode="url" placeholder="https://example.com/article  または  DOI の URL" autocomplete="off" required>
-    <button id="go">作成</button>
+    <label for="urls" class="lead" style="display:block;margin-bottom:6px">URL</label>
+    <textarea id="urls" placeholder="https://example.com/article&#10;https://doi.org/10.xxxx/xxxxx" spellcheck="false" autocomplete="off"></textarea>
+    <div id="input-bar" class="row between">
+      <span class="examples">例: <span id="examples"></span></span>
+      <button id="go" class="primary">引用を作成</button>
+    </div>
   </form>
-  <div id="msg" role="status"></div>
+  <div id="msg" role="status" style="white-space:pre-wrap"></div>
 
-  <div id="result" hidden>
-    <details open>
-      <summary>取得したメタデータ(誤りがあれば修正すると書式に反映されます)</summary>
-      <div class="grid">
-        <label for="m-title">タイトル</label><input id="m-title" type="text">
-        <label for="m-authors">著者</label><input id="m-authors" type="text" placeholder="姓, 名; 姓, 名">
-        <label for="m-date">公開日</label><input id="m-date" type="text" placeholder="YYYY-MM-DD">
-        <label for="m-site">サイト名</label><input id="m-site" type="text">
-        <label for="m-journal">雑誌名</label><input id="m-journal" type="text">
-        <label for="m-vip">巻/号/頁</label><input id="m-vip" type="text" placeholder="12/3/45-67">
-        <label for="m-doi">DOI</label><input id="m-doi" type="text">
-        <label for="m-acc">閲覧日</label><input id="m-acc" type="text" placeholder="YYYY-MM-DD">
+  <div id="toolbar" class="toolbar" hidden>
+    <div class="row between">
+      <div id="styles" class="seg" role="group" aria-label="引用の書式"></div>
+      <div class="row">
+        <button id="copy-all" class="small" type="button">リストをコピー</button>
+        <button id="dl-txt" class="small" type="button">.txt</button>
+        <button id="dl-bib" class="small" type="button">.bib</button>
+        <button id="clear" class="small danger" type="button">全削除</button>
       </div>
-    </details>
-    <div id="cards"></div>
+    </div>
   </div>
+
+  <div id="empty">まだ引用がありません。上の欄に URL を入れてください。</div>
+  <section id="list" aria-live="polite"></section>
+
+  <footer>メタデータはページから自動抽出しています。提出前に必ず内容を確認してください。リストはこのブラウザにだけ保存されます。</footer>
 </main>
-<script type="module">
-import { STYLES, format, toHtml, toPlain } from "./formatters.js";
-
-const $ = (id) => document.getElementById(id);
-const today = () => new Date().toISOString().slice(0, 10);
-let base = null;
-
-const authorsToText = (as) => as.map((a) => (a.name ? a.name : `${a.family}, ${a.given}`)).join("; ");
-const textToAuthors = (t) => t.split(";").map((s) => s.trim()).filter(Boolean).map((s) => {
-  if (s.includes(",")) { const [family, given] = s.split(/,\s*(.*)/s); return { family: family.trim(), given: (given || "").trim() }; }
-  return { name: s };
-});
-
-function readForm() {
-  const [volume = "", issue = "", pages = ""] = $("m-vip").value.split("/").map((s) => s.trim());
-  const journal = $("m-journal").value.trim();
-  return {
-    ...base,
-    type: journal ? "article" : "webpage",
-    title: $("m-title").value.trim(),
-    authors: textToAuthors($("m-authors").value),
-    date: $("m-date").value.trim(),
-    siteName: $("m-site").value.trim(),
-    journal, volume, issue, pages,
-    doi: $("m-doi").value.trim(),
-  };
-}
-
-function render() {
-  const c = readForm();
-  const acc = $("m-acc").value.trim() || today();
-  $("cards").replaceChildren(...Object.entries(STYLES).map(([key, s]) => {
-    const text = format(key, c, acc);
-    const card = document.createElement("section");
-    card.className = "card";
-    card.innerHTML = `<h2><span>${s.label}</span><button type="button" class="ghost">コピー</button></h2>`;
-    const body = document.createElement(key === "bibtex" ? "pre" : "p");
-    body.className = "out";
-    if (key === "bibtex") body.textContent = toPlain(text); else body.innerHTML = toHtml(text);
-    card.append(body);
-    card.querySelector("button").addEventListener("click", async (e) => {
-      const btn = e.currentTarget;
-      try {
-        // Copy as rich text when possible so italics survive pasting into Word / Docs.
-        if (key !== "bibtex" && window.ClipboardItem) {
-          await navigator.clipboard.write([new ClipboardItem({
-            "text/html": new Blob([toHtml(text)], { type: "text/html" }),
-            "text/plain": new Blob([toPlain(text)], { type: "text/plain" }),
-          })]);
-        } else await navigator.clipboard.writeText(toPlain(text));
-        btn.textContent = "コピーしました";
-      } catch { btn.textContent = "失敗"; }
-      setTimeout(() => (btn.textContent = "コピー"), 1500);
-    });
-    return card;
-  }));
-}
-
-$("f").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const msg = $("msg"), go = $("go");
-  msg.className = ""; msg.textContent = "取得中…"; go.disabled = true;
-  try {
-    const r = await fetch(`/api/cite?url=${encodeURIComponent($("url").value.trim())}`);
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || "エラーが発生しました");
-    base = data;
-    $("m-title").value = data.title || "";
-    $("m-authors").value = authorsToText(data.authors || []);
-    $("m-date").value = data.date || "";
-    $("m-site").value = data.siteName || "";
-    $("m-journal").value = data.journal || "";
-    $("m-vip").value = [data.volume, data.issue, data.pages].some(Boolean) ? [data.volume, data.issue, data.pages].join("/") : "";
-    $("m-doi").value = data.doi || "";
-    $("m-acc").value = today();
-    $("result").hidden = false;
-    msg.textContent = data.authors?.length ? "" : "著者が見つかりませんでした。必要なら入力してください。";
-    render();
-  } catch (err) {
-    msg.className = "err"; msg.textContent = err.message;
-  } finally { go.disabled = false; }
-});
-
-for (const el of document.querySelectorAll(".grid input")) el.addEventListener("input", render);
-</script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
