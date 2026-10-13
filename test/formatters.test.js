@@ -52,3 +52,15 @@ test("BibTeX arXiv eprint", () => {
   const c = { type: "webpage", title: "T", siteName: "arXiv", arxiv: "1706.03762", authors: [{ family: "A", given: "B" }], date: "2017-06-12", url: "https://arxiv.org/abs/1706.03762" };
   assert.match(format("bibtex", c, "2025-01-02"), /eprint = \{1706\.03762\}[\s\S]*archiveprefix = \{arXiv\}/);
 });
+
+test("SIST02", () => {
+  const c = { type: "webpage", title: "引用の書き方", siteName: "例ブログ", authors: [{ family: "山田", given: "太郎" }, { family: "Smith", given: "John" }], date: "2023-04-01", url: "https://example.jp/a" };
+  assert.equal(toPlain(format("sist", c, "2025-01-02")), "山田太郎, Smith, J. 引用の書き方. 例ブログ. 2023-04-01. https://example.jp/a, (参照 2025-01-02).");
+  assert.equal(toPlain(format("sist", { ...art, authors: [{ family: "山田", given: "太郎" }] })), "山田太郎. A study of things. Journal of Stuff. 2021, 12(3), pp.45-67. https://doi.org/10.1000/xyz123.");
+});
+
+test("SIST02 without URL does not leave stray punctuation", () => {
+  const c = { type: "webpage", title: "題", siteName: "", authors: [], date: "", url: "" };
+  assert.equal(toPlain(format("sist", c, "2025-01-02")), "題. (参照 2025-01-02).");
+  assert.equal(toPlain(format("sist", c)), "題.");
+});

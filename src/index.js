@@ -1,4 +1,4 @@
-import { cleanTitle, parseName, splitAuthors } from "../public/names.js";
+import { cleanTitle, decodeEntities, normalizeDate, parseName, splitAuthors } from "../public/names.js";
 
 // Cloudflare Worker: /api/cite?url=... fetches a page and extracts citation metadata.
 // Everything else is served from ./public via the ASSETS binding.
@@ -133,6 +133,7 @@ async function extractMetadata(res, target) {
   let title = "";
   let canonical = "";
   let lang = "";
+  const times = [];
   let ldBuf = "";
   let titleBuf = "";
 
@@ -142,11 +143,18 @@ async function extractMetadata(res, target) {
       element(e) {
         const k = (e.getAttribute("name") || e.getAttribute("property") || e.getAttribute("itemprop") || "").toLowerCase();
         const v = e.getAttribute("content");
-        if (k && v) metas.push([k, v.trim()]);
+        if (k && v) metas.push([k, decodeEntities(v).trim()]);
+      },
+    })
+    // Collect <time> candidates; pickTime decides which (if any) is trustworthy as a publication date.
+    .on("time[datetime]", {
+      element(e) {
+        const strict = e.hasAttribute("itemprop") || e.hasAttribute("pubdate") || /\b(published|entry-date|posted)\b/.test(e.getAttribute("class") || "");
+        times.push({ v: e.getAttribute("datetime"), strict });
       },
     })
     .on("link[rel='canonical']", { element(e) { canonical = e.getAttribute("href") || ""; } })
-    .on("title", { text(t) { titleBuf += t.text; if (t.lastInTextNode) { title ||= titleBuf.trim(); titleBuf = ""; } } })
+    .on("title", { text(t) { titleBuf += t.text; if (t.lastInTextNode) { title ||= decodeEntities(titleBuf).trim(); titleBuf = ""; } } })
     .on("script[type='application/ld+json']", {
       text(t) { ldBuf += t.text; if (t.lastInTextNode) { ld.push(ldBuf); ldBuf = ""; } },
     });
@@ -173,7 +181,7 @@ async function extractMetadata(res, target) {
   const date = one(
     "citation_publication_date", "citation_date", "citation_online_date", "dc.date", "dc.date.issued",
     "article:published_time", "og:article:published_time", "datepublished", "date", "pubdate",
-  ) || ldObj.date;
+  ) || ldObj.date || pickTime(times, one("og:type") === "article");
 
   const arxiv = one("citation_arxiv_id") || (/arxiv\.org$/.test(target.hostname) ? (/\/abs\/(.+)$/.exec(target.pathname) || [])[1] || "" : "");
 
@@ -269,20 +277,17 @@ function parseLd(blocks) {
   const article = nodes.find((n) => /Article|BlogPosting|NewsArticle|WebPage/i.test([].concat(n?.["@type"] || []).join(",")));
   if (!article) return out;
   out.title = typeof article.headline === "string" ? article.headline : "";
-  out.date = article.datePublished || "";
+  out.date = article.datePublished || article.dateCreated || "";
   out.authors = [].concat(article.author || []).map((a) => (typeof a === "string" ? a : a?.name)).filter(Boolean);
   out.site = article.publisher?.name || "";
   return out;
 }
 
-function normalizeDate(s) {
-  if (!s) return "";
-  let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(s);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-  m = /^(\d{4})[-/.](\d{1,2})$/.exec(s);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}`;
-  m = /^(\d{4})$/.exec(s.trim());
-  if (m) return m[1];
-  const d = new Date(s);
-  return isNaN(d) ? "" : d.toISOString().slice(0, 10);
+// Prefer explicit publication markers. Without one, trust the first <time> only on article pages
+// (og:type=article) or when it is the sole candidate, so home/list pages don't yield a random date.
+function pickTime(times, isArticle) {
+  const valid = times.filter((t) => normalizeDate(t.v));
+  const strict = valid.find((t) => t.strict);
+  if (strict) return strict.v;
+  return valid.length && (isArticle || times.length === 1) ? valid[0].v : "";
 }

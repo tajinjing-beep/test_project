@@ -34,3 +34,29 @@ export function parseName(s) {
   return { family: parts.at(-1), given: parts.slice(0, -1).join(" ") };
 }
 
+
+export function normalizeDate(s) {
+  if (!s) return "";
+  // 2024年1月5日 / 2024年1月 / 2024年
+  const j = /^(\d{4})年(?:\s*(\d{1,2})月)?(?:\s*(\d{1,2})日)?/.exec(s.trim());
+  if (j) return [j[1], j[2] && j[2].padStart(2, "0"), j[2] && j[3] && j[3].padStart(2, "0")].filter(Boolean).join("-");
+  let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(s);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = /^(\d{4})[-/.](\d{1,2})$/.exec(s);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}`;
+  m = /^(\d{4})$/.exec(s.trim());
+  if (m) return m[1];
+  const d = new Date(s);
+  return isNaN(d) ? "" : d.toISOString().slice(0, 10);
+}
+
+const NAMED = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ndash: "–", mdash: "—", hellip: "…", laquo: "«", raquo: "»" };
+
+// HTMLRewriter hands back raw attribute/text values, so decode entities ourselves.
+export function decodeEntities(s) {
+  return (s || "").replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (m, dec, hex, name) => {
+    if (name) return NAMED[name.toLowerCase()] ?? m;
+    const cp = dec ? parseInt(dec, 10) : parseInt(hex, 16);
+    return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
+  });
+}

@@ -170,6 +170,25 @@ function ja(c, acc) {
   return `${who ? who + " " : ""}(${year}) 「${c.title}」${c.siteName ? `『${c.siteName}』` : ""}${link} ${accessed}`.trim();
 }
 
+// SIST 02(科学技術情報流通技術基準)に沿った形。電子資料は 著者. 標題. サイト名. 日付. URL, (参照 日付).
+function sist(c, acc) {
+  const au = c.authors || [];
+  const nm = (a) => a.name || (isCjk(a.family) ? cjkName(a) : aLastInit(a));
+  const cjk = au.some((a) => isCjk(a.family || a.name));
+  const who = au.length > 3 ? au.slice(0, 3).map(nm).join(", ") + (cjk ? ", 他" : ", et al.") : au.map(nm).join(", ");
+  const d = parseDate(c.date);
+  const date = d ? `${d.y}${d.m ? `-${String(d.m).padStart(2, "0")}` : ""}${d.d ? `-${String(d.d).padStart(2, "0")}` : ""}` : "";
+  const a = parseDate(acc);
+  const ref = a ? `(参照 ${a.y}-${String(a.m).padStart(2, "0")}-${String(a.d).padStart(2, "0")})` : "";
+  const link = c.doi ? `https://doi.org/${c.doi}` : c.url;
+  if (c.type === "article" && c.journal) {
+    const vi = [c.volume, c.issue && `(${c.issue})`].filter(Boolean).join("");
+    const rest = [d && d.y, vi, c.pages && `pp.${c.pages}`].filter(Boolean).join(", ");
+    return [who && endDot(who), endDot(c.title), endDot(c.journal), rest && endDot(rest), endDot(link)].filter(Boolean).join(" ");
+  }
+  return [who && endDot(who), endDot(c.title), c.siteName && endDot(c.siteName), date && endDot(date), endDot([link, ref].filter(Boolean).join(", "))].filter((x) => x && x !== ".").join(" ");
+}
+
 function bibtex(c, acc) {
   const au = c.authors || [];
   const d = parseDate(c.date);
@@ -192,6 +211,7 @@ export const STYLES = {
   harvard: { label: "Harvard", fn: harvard },
   ieee: { label: "IEEE", fn: ieee },
   ja: { label: "日本語", fn: ja },
+  sist: { label: "SIST02", fn: sist },
   bibtex: { label: "BibTeX", fn: bibtex },
 };
 
